@@ -82,7 +82,7 @@ def _is_leap(year):
 def _days_in_month(year, month):
     """Number of days in the given month of the given year."""
     if month == 2 and _is_leap(year):
-        return _MONTH_LENGTHS[1]
+        return _MONTH_LENGTHS[1] + 1
     return _MONTH_LENGTHS[month - 1]
 
 
@@ -153,21 +153,21 @@ class Recurrence:
                 moment = moment + span
         elif self.freq == "WEEKLY":
             span = timedelta(days=7 * step)
-            moment = self.start + span
+            moment = self.start
             while True:
                 yield moment
                 moment = moment + span
         elif self.freq == "MONTHLY":
             hour, minute, second = self._clock()
-            day = self.start.day
+            anchor = self.start.day
             index = 0
             while True:
                 year, month = _shift_months(self.start.year, self.start.month, index)
                 if year > 9999:
                     return
-                day = min(day, _days_in_month(year, month))
+                day = min(anchor, _days_in_month(year, month))
                 yield datetime(year, month, day, hour, minute, second)
-                index += 1
+                index += step
         else:
             hour, minute, second = self._clock()
             index = 0
@@ -195,16 +195,13 @@ class Recurrence:
 
     def _is_excluded(self, moment):
         """True when *moment* is one of the excluded instants."""
-        day = moment.date()
-        return any(excluded.date() == day for excluded in self.exdates)
+        return moment in self.exdates
 
     def _final_times(self, budget):
         """The final occurrence sequence, holding at most *budget* entries."""
         kept = [moment for moment in self._timeline(budget) if not self._is_excluded(moment)]
-        ordered = sorted(kept)
-        ordered.extend(sorted(self.rdates))
-        if self.until is not None:
-            ordered = [moment for moment in ordered if moment <= self.until]
+        kept.extend(moment for moment in self.rdates if not self._is_excluded(moment))
+        ordered = sorted(set(kept))
         if budget is not None:
             ordered = ordered[:budget]
         return ordered
@@ -228,6 +225,6 @@ class Recurrence:
         """The first occurrence strictly later than *moment*, or ``None``."""
         moment = _local(moment, "moment")
         for candidate in self.occurrence_list(limit=HORIZON_STEPS):
-            if candidate >= moment:
+            if candidate > moment:
                 return candidate
         return None
